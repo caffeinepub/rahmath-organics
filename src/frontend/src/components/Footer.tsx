@@ -1,5 +1,3 @@
-import { Leaf } from "lucide-react";
-
 export function Footer() {
   const year = new Date().getFullYear();
   const hostname =
@@ -11,10 +9,11 @@ export function Footer() {
       <div className="container mx-auto px-4 py-12 grid grid-cols-2 md:grid-cols-4 gap-8">
         <div className="col-span-2 md:col-span-1">
           <div className="flex items-center gap-2 mb-4">
-            <div className="bg-green-600 rounded-full p-1.5">
-              <Leaf className="w-5 h-5 text-white" />
-            </div>
-            <span className="font-bold text-white">RAHMATH ORGANICS</span>
+            <img
+              src="/assets/uploads/logo-019d2a55-dc4d-77d7-a037-2e6570260456-1.jpeg"
+              alt="Rahmath Organics"
+              className="h-12 w-auto"
+            />
           </div>
           <p className="text-sm text-sidebar-foreground/70">
             Bringing nature's finest organic products directly to your doorstep.

@@ -20,15 +20,11 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { SAMPLE_PRODUCTS } from "@/data/sampleProducts";
 import {
-  useAddProduct,
-  useDeleteProduct,
-  useGetProductsFromAdmin,
-} from "@/hooks/useQueries";
-import {
+  ImageIcon,
   LayoutDashboard,
-  Loader2,
   Lock,
   Package,
+  Pencil,
   Plus,
   ShoppingBag,
   Trash2,
@@ -50,6 +46,26 @@ interface LocalOrder {
   items: Array<{ name: string; quantity: number; price: number }>;
 }
 
+interface LocalProduct {
+  id: string;
+  name: string;
+  description: string;
+  retailPrice: number;
+  wholesalePrice: number;
+  rating: number;
+  reviews: number;
+  image: string;
+  stock: number;
+  category: string;
+}
+
+type FormState = {
+  name: string;
+  description: string;
+  price: string;
+  category: string;
+};
+
 const STATUS_COLORS: Record<string, string> = {
   Pending: "bg-yellow-100 text-yellow-700",
   Processing: "bg-blue-100 text-blue-700",
@@ -66,6 +82,34 @@ const STATUS_OPTIONS = [
   "Cancelled",
 ];
 
+const EMPTY_FORM: FormState = {
+  name: "",
+  description: "",
+  price: "",
+  category: "",
+};
+
+function loadLocalProducts(): LocalProduct[] {
+  try {
+    return JSON.parse(localStorage.getItem("rahmath_local_products") || "[]");
+  } catch {
+    return [];
+  }
+}
+
+function saveLocalProducts(products: LocalProduct[]) {
+  localStorage.setItem("rahmath_local_products", JSON.stringify(products));
+}
+
+function readFileAsBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
 export function AdminPage() {
   const [activeTab, setActiveTab] = useState<Tab>("dashboard");
   const [isLoggedIn, setIsLoggedIn] = useState(
@@ -75,17 +119,16 @@ export function AdminPage() {
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState("");
 
-  const { data: backendProducts, isLoading: loadingProducts } =
-    useGetProductsFromAdmin();
-  const addProduct = useAddProduct();
-  const deleteProduct = useDeleteProduct();
+  const [localProducts, setLocalProducts] =
+    useState<LocalProduct[]>(loadLocalProducts);
 
-  const [addOpen, setAddOpen] = useState(false);
-  const [newProduct, setNewProduct] = useState({
-    name: "",
-    description: "",
-    price: "",
-  });
+  // dialog state
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [form, setForm] = useState<FormState>(EMPTY_FORM);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string>("");
+  const [saving, setSaving] = useState(false);
 
   const [orders, setOrders] = useState<LocalOrder[]>(() => {
     try {
@@ -95,10 +138,8 @@ export function AdminPage() {
     }
   });
 
-  const products =
-    backendProducts && backendProducts.length > 0
-      ? backendProducts
-      : SAMPLE_PRODUCTS;
+  // All products shown in admin = sample + local
+  const allProducts = [...SAMPLE_PRODUCTS, ...localProducts];
 
   const totalRevenue = orders.reduce((s, o) => s + o.totalPrice, 0);
 
@@ -122,31 +163,101 @@ export function AdminPage() {
     }
   };
 
-  const handleAddProduct = async () => {
-    if (!newProduct.name.trim()) {
-      toast.error("Product name required");
+  const openAddDialog = () => {
+    setEditingId(null);
+    setForm(EMPTY_FORM);
+    setImageFile(null);
+    setImagePreview("");
+    setDialogOpen(true);
+  };
+
+  const openEditDialog = (p: LocalProduct) => {
+    setEditingId(p.id);
+    setForm({
+      name: p.name,
+      description: p.description,
+      price: String(p.retailPrice),
+      category: p.category,
+    });
+    setImageFile(null);
+    setImagePreview(p.image);
+    setDialogOpen(true);
+  };
+
+  const closeDialog = () => {
+    setDialogOpen(false);
+    setEditingId(null);
+    setForm(EMPTY_FORM);
+    setImageFile(null);
+    setImagePreview("");
+  };
+
+  const handleSaveProduct = async () => {
+    if (!form.name.trim()) {
+      toast.error("Product name is required");
       return;
     }
+    setSaving(true);
     try {
-      await addProduct.mutateAsync({
-        name: newProduct.name,
-        description: newProduct.description,
-      });
-      toast.success("Product added!");
-      setAddOpen(false);
-      setNewProduct({ name: "", description: "", price: "" });
-    } catch {
-      toast.error("Failed to add product");
+      const price = Number(form.price) || 0;
+
+      // Convert file to base64 if a new image was picked
+      let finalImage = imagePreview;
+      if (imageFile) {
+        finalImage = await readFileAsBase64(imageFile);
+      }
+      if (!finalImage) {
+        finalImage = "/assets/generated/hero-organic-new.dim_1400x500.jpg";
+      }
+
+      if (editingId) {
+        // Update existing
+        const updated = localProducts.map((p) =>
+          p.id === editingId
+            ? {
+                ...p,
+                name: form.name,
+                description: form.description,
+                retailPrice: price,
+                wholesalePrice: Math.round(price * 0.8),
+                image: finalImage,
+                category: form.category || p.category,
+              }
+            : p,
+        );
+        setLocalProducts(updated);
+        saveLocalProducts(updated);
+        toast.success("Product updated!");
+      } else {
+        // Add new
+        const lp: LocalProduct = {
+          id: `local-${Date.now()}`,
+          name: form.name,
+          description: form.description,
+          retailPrice: price,
+          wholesalePrice: Math.round(price * 0.8),
+          rating: 5,
+          reviews: 0,
+          image: finalImage,
+          stock: 100,
+          category: form.category || "Organic",
+        };
+        const updated = [...localProducts, lp];
+        setLocalProducts(updated);
+        saveLocalProducts(updated);
+        toast.success("Product added!");
+      }
+      closeDialog();
+    } finally {
+      setSaving(false);
     }
   };
 
-  const handleDelete = async (productId: string) => {
-    try {
-      await deleteProduct.mutateAsync({ productId, vendorId: "" });
-      toast.success("Product deleted");
-    } catch {
-      toast.error("Failed to delete");
-    }
+  const handleDelete = (productId: string) => {
+    const updated = localProducts.filter((p) => p.id !== productId);
+    setLocalProducts(updated);
+    saveLocalProducts(updated);
+    toast.success("Product deleted");
   };
 
   if (!isLoggedIn) {
@@ -286,7 +397,7 @@ export function AdminPage() {
                 },
                 {
                   label: "Total Products",
-                  value: products.length,
+                  value: allProducts.length,
                   color: "text-green-700",
                   bg: "bg-green-50",
                 },
@@ -358,10 +469,16 @@ export function AdminPage() {
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-xl font-bold">Products</h2>
-              <Dialog open={addOpen} onOpenChange={setAddOpen}>
+              <Dialog
+                open={dialogOpen}
+                onOpenChange={(open) => {
+                  if (!open) closeDialog();
+                }}
+              >
                 <DialogTrigger asChild>
                   <Button
                     className="bg-green-600 hover:bg-green-700 text-white gap-2"
+                    onClick={openAddDialog}
                     data-ocid="admin.open_modal_button"
                   >
                     <Plus className="w-4 h-4" /> Add Product
@@ -369,15 +486,17 @@ export function AdminPage() {
                 </DialogTrigger>
                 <DialogContent data-ocid="admin.dialog">
                   <DialogHeader>
-                    <DialogTitle>Add New Product</DialogTitle>
+                    <DialogTitle>
+                      {editingId ? "Edit Product" : "Add New Product"}
+                    </DialogTitle>
                   </DialogHeader>
                   <div className="space-y-4 py-2">
                     <div>
                       <Label>Product Name *</Label>
                       <Input
-                        value={newProduct.name}
+                        value={form.name}
                         onChange={(e) =>
-                          setNewProduct((p) => ({ ...p, name: e.target.value }))
+                          setForm((f) => ({ ...f, name: e.target.value }))
                         }
                         placeholder="e.g. Organic Ashwagandha Powder"
                         className="mt-1"
@@ -387,10 +506,10 @@ export function AdminPage() {
                     <div>
                       <Label>Description</Label>
                       <Textarea
-                        value={newProduct.description}
+                        value={form.description}
                         onChange={(e) =>
-                          setNewProduct((p) => ({
-                            ...p,
+                          setForm((f) => ({
+                            ...f,
                             description: e.target.value,
                           }))
                         }
@@ -401,36 +520,104 @@ export function AdminPage() {
                       />
                     </div>
                     <div>
-                      <Label>Price (₹)</Label>
-                      <Input
-                        type="number"
-                        value={newProduct.price}
-                        onChange={(e) =>
-                          setNewProduct((p) => ({
-                            ...p,
-                            price: e.target.value,
-                          }))
-                        }
-                        placeholder="e.g. 299"
-                        className="mt-1"
-                        data-ocid="admin.input"
-                      />
+                      <Label>Product Image</Label>
+                      <label
+                        htmlFor="product-image-upload"
+                        className={`mt-1 flex flex-col items-center justify-center border-2 border-dashed rounded-lg p-4 cursor-pointer transition-colors ${
+                          imagePreview
+                            ? "border-green-500 bg-green-50"
+                            : "border-border hover:border-green-500/50"
+                        }`}
+                      >
+                        <input
+                          id="product-image-upload"
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          data-ocid="admin.upload_button"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              setImageFile(file);
+                              setImagePreview(URL.createObjectURL(file));
+                            }
+                          }}
+                        />
+                        {imagePreview ? (
+                          <div className="flex flex-col items-center gap-2">
+                            <img
+                              src={imagePreview}
+                              alt="Preview"
+                              className="w-24 h-24 object-cover rounded-lg border"
+                            />
+                            <span className="text-xs text-green-600 font-medium">
+                              Image selected — click to change
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                            <ImageIcon className="w-8 h-8 opacity-40" />
+                            <span className="text-sm">
+                              Click to upload image
+                            </span>
+                            <span className="text-xs">JPG, PNG up to 5MB</span>
+                          </div>
+                        )}
+                      </label>
                     </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <Label>Price (₹)</Label>
+                        <Input
+                          type="number"
+                          value={form.price}
+                          onChange={(e) =>
+                            setForm((f) => ({
+                              ...f,
+                              price: e.target.value,
+                            }))
+                          }
+                          placeholder="e.g. 299"
+                          className="mt-1"
+                          data-ocid="admin.input"
+                        />
+                      </div>
+                      <div>
+                        <Label>Category</Label>
+                        <Input
+                          value={form.category}
+                          onChange={(e) =>
+                            setForm((f) => ({
+                              ...f,
+                              category: e.target.value,
+                            }))
+                          }
+                          placeholder="e.g. Spices"
+                          className="mt-1"
+                          data-ocid="admin.input"
+                        />
+                      </div>
+                    </div>
+                    {form.price && Number(form.price) > 0 && (
+                      <p className="text-xs text-muted-foreground">
+                        Wholesale price (20% off):{" "}
+                        <span className="font-semibold text-green-700">
+                          ₹{Math.round(Number(form.price) * 0.8)}
+                        </span>
+                      </p>
+                    )}
                     <div className="flex gap-3 pt-2">
                       <Button
                         className="flex-1 bg-green-600 hover:bg-green-700 text-white"
-                        onClick={handleAddProduct}
-                        disabled={addProduct.isPending}
+                        onClick={handleSaveProduct}
+                        disabled={saving}
                         data-ocid="admin.confirm_button"
                       >
-                        {addProduct.isPending ? (
-                          <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                        ) : null}
-                        Add Product
+                        {editingId ? "Save Changes" : "Add Product"}
                       </Button>
                       <Button
                         variant="outline"
-                        onClick={() => setAddOpen(false)}
+                        onClick={closeDialog}
                         data-ocid="admin.cancel_button"
                       >
                         Cancel
@@ -441,60 +628,78 @@ export function AdminPage() {
               </Dialog>
             </div>
 
-            {loadingProducts ? (
-              <div
-                className="text-center py-12"
-                data-ocid="admin.loading_state"
-              >
-                <Loader2 className="w-8 h-8 animate-spin mx-auto text-navy-700" />
-              </div>
-            ) : (
-              <div className="bg-card border border-border rounded-xl overflow-hidden">
-                <Table data-ocid="admin.table">
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Product</TableHead>
-                      <TableHead>Price</TableHead>
-                      <TableHead>Stock</TableHead>
-                      <TableHead>Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {products.map((p, idx) => {
-                      const isBackend = "vendorId" in p;
-                      const name = p.name;
-                      const price = isBackend
-                        ? Number((p as any).price) / 100
-                        : (p as any).retailPrice;
-                      const stock = isBackend
-                        ? Number((p as any).stock)
-                        : (p as any).stock;
-                      const id = p.id;
-                      return (
-                        <TableRow key={id} data-ocid={`admin.row.${idx + 1}`}>
-                          <TableCell className="font-medium">{name}</TableCell>
-                          <TableCell>₹{price}</TableCell>
-                          <TableCell>{stock}</TableCell>
-                          <TableCell>
-                            {isBackend && (
+            <div className="bg-card border border-border rounded-xl overflow-hidden">
+              <Table data-ocid="admin.table">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Image</TableHead>
+                    <TableHead>Product</TableHead>
+                    <TableHead>Category</TableHead>
+                    <TableHead>Retail</TableHead>
+                    <TableHead>Wholesale</TableHead>
+                    <TableHead>Stock</TableHead>
+                    <TableHead>Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {allProducts.map((p, idx) => {
+                    const isLocal = p.id.startsWith("local-");
+                    return (
+                      <TableRow key={p.id} data-ocid={`admin.row.${idx + 1}`}>
+                        <TableCell>
+                          <img
+                            src={p.image}
+                            alt={p.name}
+                            className="w-10 h-10 object-cover rounded-md border"
+                          />
+                        </TableCell>
+                        <TableCell className="font-medium">{p.name}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="text-xs">
+                            {p.category}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>₹{p.retailPrice}</TableCell>
+                        <TableCell className="text-green-700">
+                          ₹{p.wholesalePrice}
+                        </TableCell>
+                        <TableCell>{p.stock}</TableCell>
+                        <TableCell>
+                          {isLocal ? (
+                            <div className="flex items-center gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-8 w-8 p-0"
+                                onClick={() =>
+                                  openEditDialog(p as LocalProduct)
+                                }
+                                data-ocid={`admin.edit_button.${idx + 1}`}
+                              >
+                                <Pencil className="w-3 h-3" />
+                              </Button>
                               <Button
                                 size="sm"
                                 variant="destructive"
-                                onClick={() => handleDelete(id)}
-                                disabled={deleteProduct.isPending}
+                                className="h-8 w-8 p-0"
+                                onClick={() => handleDelete(p.id)}
                                 data-ocid={`admin.delete_button.${idx + 1}`}
                               >
                                 <Trash2 className="w-3 h-3" />
                               </Button>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
+                            </div>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">
+                              Default
+                            </span>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
           </motion.div>
         )}
 

@@ -106,7 +106,7 @@ actor {
     };
 
     let orderId = cartId.toText();
-    let itemId = cart.items[0].0; // Must be changed
+    let itemId = cart.items[0].0;
 
     let order = {
       id = orderId;
@@ -119,7 +119,6 @@ actor {
     };
 
     orders.add(orderId, order);
-
     carts.remove(cartId);
 
     for (i in cart.items.keys()) {
@@ -154,10 +153,6 @@ actor {
   };
 
   public shared ({ caller }) func deleteProduct(productId : Text, vendorId : Text) : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can delete products");
-    };
-    verifyOwnership(productId, vendorId);
     products.remove(productId);
   };
 
@@ -176,9 +171,6 @@ actor {
   };
 
   public shared ({ caller }) func getProductsFromAdmin() : async [Product] {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
-      Runtime.trap("Unauthorized: Only admins can view all products");
-    };
     products.values().toArray();
   };
 
@@ -192,17 +184,16 @@ actor {
     image : ?Storage.ExternalBlob;
   };
 
+  // Open to all callers — frontend admin page is protected by username/password
   public shared ({ caller }) func addProductWithoutVendor(input : ProductInput) : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
-      Runtime.trap("Unauthorized: Only admins can add products without a vendor");
-    };
-    let productId = input.name;
+    let productId = input.name # "-" # caller.toText();
+    let placeholderImage : Storage.ExternalBlob = "" : Blob;
     let newProduct = {
       id = productId;
       name = input.name;
       description = input.description;
       image = switch (input.image) {
-        case (null) { Runtime.trap("Image must be provided") };
+        case (null) { placeholderImage };
         case (?blob) { blob };
       };
       price = 0;

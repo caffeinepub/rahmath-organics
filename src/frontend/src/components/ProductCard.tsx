@@ -1,7 +1,8 @@
 import { Button } from "@/components/ui/button";
 import { useCart } from "@/contexts/CartContext";
 import type { SampleProduct } from "@/data/sampleProducts";
-import { Eye, ShoppingCart, Star } from "lucide-react";
+import { useNavigate } from "@tanstack/react-router";
+import { ClipboardList, ShoppingCart, Star } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -13,6 +14,7 @@ interface ProductCardProps {
 
 export function ProductCard({ product, isWholesale, index }: ProductCardProps) {
   const { addItem, openCart } = useCart();
+  const navigate = useNavigate();
   const [imgError, setImgError] = useState(false);
   const price = isWholesale ? product.wholesalePrice : product.retailPrice;
 
@@ -26,6 +28,17 @@ export function ProductCard({ product, isWholesale, index }: ProductCardProps) {
     });
     toast.success(`${product.name} added to cart`);
     openCart();
+  };
+
+  const handleOrderNow = () => {
+    addItem({
+      productId: product.id,
+      name: product.name,
+      price,
+      quantity: 1,
+      image: product.image,
+    });
+    navigate({ to: "/order" });
   };
 
   return (
@@ -97,11 +110,12 @@ export function ProductCard({ product, isWholesale, index }: ProductCardProps) {
           </Button>
           <Button
             size="sm"
-            variant="outline"
-            className="px-2 border-border"
+            className="flex-1 bg-green-600 hover:bg-green-700 text-white text-xs gap-1"
+            onClick={handleOrderNow}
             data-ocid={`product.secondary_button.${index}`}
           >
-            <Eye className="w-3 h-3" />
+            <ClipboardList className="w-3 h-3" />
+            Order Now
           </Button>
         </div>
       </div>

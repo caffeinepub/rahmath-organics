@@ -1,38 +1,32 @@
-import type { Product } from "@/backend";
 import { ProductCard } from "@/components/ProductCard";
 import { Button } from "@/components/ui/button";
 import { SAMPLE_PRODUCTS, type SampleProduct } from "@/data/sampleProducts";
-import { useGetAllProducts } from "@/hooks/useQueries";
 import { useNavigate } from "@tanstack/react-router";
 import { ChevronRight, Filter } from "lucide-react";
 import { motion } from "motion/react";
 import { useState } from "react";
 
-function backendToSampleProduct(p: Product): SampleProduct {
-  const retailPrice = Number(p.price) / 100;
-  return {
-    id: p.id,
-    name: p.name,
-    description: p.description,
-    retailPrice,
-    wholesalePrice: Math.round(retailPrice * 0.75),
-    rating: 4.5,
-    reviews: 0,
-    image: p.image.getDirectURL(),
-    stock: Number(p.stock),
-    category: "Organic",
-  };
+function loadLocalProducts(): SampleProduct[] {
+  try {
+    return JSON.parse(localStorage.getItem("rahmath_local_products") || "[]");
+  } catch {
+    return [];
+  }
 }
+
+const CATEGORIES = [
+  { label: "Henna", emoji: "🌿" },
+  { label: "Sweeteners", emoji: "🍯" },
+  { label: "Oils", emoji: "🫙" },
+  { label: "Spices", emoji: "🌶️" },
+];
 
 export function HomePage() {
   const [isWholesale, setIsWholesale] = useState(false);
-  const { data: backendProducts, isLoading } = useGetAllProducts();
   const navigate = useNavigate();
 
-  const products: SampleProduct[] =
-    backendProducts && backendProducts.length > 0
-      ? backendProducts.map(backendToSampleProduct)
-      : SAMPLE_PRODUCTS;
+  const localProducts = loadLocalProducts();
+  const products: SampleProduct[] = [...SAMPLE_PRODUCTS, ...localProducts];
 
   return (
     <main>
@@ -42,7 +36,7 @@ export function HomePage() {
         style={{ minHeight: "420px" }}
       >
         <img
-          src="/assets/generated/hero-organic.dim_1400x500.jpg"
+          src="/assets/generated/hero-organic-new.dim_1400x500.jpg"
           alt="Rahmath Organics Hero"
           className="absolute inset-0 w-full h-full object-cover"
         />
@@ -142,42 +136,48 @@ export function HomePage() {
 
         {isWholesale && (
           <div className="bg-navy-50 border border-navy-100 rounded-lg px-4 py-3 mb-6 text-sm text-navy-700">
-            🏪 <strong>Wholesale Pricing Active</strong> — Prices shown at 25%
+            🏪 <strong>Wholesale Pricing Active</strong> — Prices shown at 20%
             discount. Minimum order quantity may apply.
           </div>
         )}
 
-        {isLoading ? (
-          <div
-            className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4"
-            data-ocid="product.loading_state"
-          >
-            {[1, 2, 3, 4, 5, 6].map((i) => (
-              <div key={i} className="bg-card rounded-lg border animate-pulse">
-                <div className="aspect-square bg-secondary/50" />
-                <div className="p-3 space-y-2">
-                  <div className="h-4 bg-secondary rounded" />
-                  <div className="h-3 bg-secondary rounded w-2/3" />
-                </div>
-              </div>
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4"
+        >
+          {products.map((product, i) => (
+            <ProductCard
+              key={product.id}
+              product={product}
+              isWholesale={isWholesale}
+              index={i + 1}
+            />
+          ))}
+        </motion.div>
+
+        {/* Category strip */}
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.2 }}
+          className="mt-12 text-center"
+        >
+          <p className="text-xs font-semibold uppercase tracking-widest text-green-700 mb-4">
+            Shop by Category
+          </p>
+          <div className="flex flex-wrap justify-center gap-3">
+            {CATEGORIES.map((cat) => (
+              <span
+                key={cat.label}
+                className="inline-flex items-center gap-2 px-5 py-2 rounded-full bg-green-50 border border-green-200 text-green-800 text-sm font-medium shadow-sm hover:bg-green-100 hover:border-green-400 transition-colors cursor-default select-none"
+              >
+                <span>{cat.emoji}</span>
+                {cat.label}
+              </span>
             ))}
           </div>
-        ) : (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4"
-          >
-            {products.map((product, i) => (
-              <ProductCard
-                key={product.id}
-                product={product}
-                isWholesale={isWholesale}
-                index={i + 1}
-              />
-            ))}
-          </motion.div>
-        )}
+        </motion.div>
       </section>
 
       {/* Features strip */}

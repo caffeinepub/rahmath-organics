@@ -1,18 +1,13 @@
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { useCart } from "@/contexts/CartContext";
-import { useInternetIdentity } from "@/hooks/useInternetIdentity";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { Leaf, Menu, ShoppingCart, X } from "lucide-react";
+import { Menu, ShoppingCart, X } from "lucide-react";
 import { useState } from "react";
 
 export function Header() {
   const { totalItems, openCart } = useCart();
-  const { login, clear, loginStatus, identity } = useInternetIdentity();
   const [mobileOpen, setMobileOpen] = useState(false);
   const navigate = useNavigate();
-
-  const isLoggedIn = loginStatus === "success" && !!identity;
 
   return (
     <header className="bg-white shadow-nav sticky top-0 z-40">
@@ -21,14 +16,14 @@ export function Header() {
         <Link
           to="/"
           search={{ mode: undefined }}
-          className="flex items-center gap-2 font-bold text-xl text-navy-700"
+          className="flex items-center"
           data-ocid="nav.link"
         >
-          <div className="bg-green-600 rounded-full p-1.5">
-            <Leaf className="w-5 h-5 text-white" />
-          </div>
-          <span className="hidden sm:block">RAHMATH ORGANICS</span>
-          <span className="sm:hidden">RO</span>
+          <img
+            src="/assets/uploads/logo-019d2a55-dc4d-77d7-a037-2e6570260456-1.jpeg"
+            alt="Rahmath Organics"
+            className="h-10 w-auto"
+          />
         </Link>
 
         {/* Desktop Nav */}
@@ -81,32 +76,6 @@ export function Header() {
               </Badge>
             )}
           </button>
-
-          {isLoggedIn ? (
-            <div className="flex items-center gap-2">
-              <span className="hidden sm:block text-xs text-muted-foreground truncate max-w-[100px]">
-                {identity.getPrincipal().toString().slice(0, 8)}…
-              </span>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={clear}
-                data-ocid="nav.button"
-              >
-                Logout
-              </Button>
-            </div>
-          ) : (
-            <Button
-              size="sm"
-              className="bg-navy-700 hover:bg-navy-800 text-white"
-              onClick={() => login()}
-              disabled={loginStatus === "logging-in"}
-              data-ocid="nav.button"
-            >
-              {loginStatus === "logging-in" ? "Connecting…" : "Login"}
-            </Button>
-          )}
 
           {/* Mobile hamburger */}
           <button
