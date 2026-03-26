@@ -30,7 +30,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { motion } from "motion/react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 type Tab = "dashboard" | "products" | "orders";
@@ -101,6 +101,30 @@ function saveLocalProducts(products: LocalProduct[]) {
   localStorage.setItem("rahmath_local_products", JSON.stringify(products));
 }
 
+function loadSampleOverrides(): Record<string, Partial<LocalProduct>> {
+  try {
+    return JSON.parse(localStorage.getItem("rahmath_sample_overrides") || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function saveSampleOverrides(overrides: Record<string, Partial<LocalProduct>>) {
+  localStorage.setItem("rahmath_sample_overrides", JSON.stringify(overrides));
+}
+
+function loadDeletedSampleIds(): string[] {
+  try {
+    return JSON.parse(localStorage.getItem("rahmath_deleted_samples") || "[]");
+  } catch {
+    return [];
+  }
+}
+
+function saveDeletedSampleIds(ids: string[]) {
+  localStorage.setItem("rahmath_deleted_samples", JSON.stringify(ids));
+}
+
 function readFileAsBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -108,6 +132,14 @@ function readFileAsBase64(file: File): Promise<string> {
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
+}
+
+function readCancelledOrders(): string[] {
+  try {
+    return JSON.parse(localStorage.getItem("rahmath_cancelled_orders") || "[]");
+  } catch {
+    return [];
+  }
 }
 
 export function AdminPage() {
@@ -121,6 +153,10 @@ export function AdminPage() {
 
   const [localProducts, setLocalProducts] =
     useState<LocalProduct[]>(loadLocalProducts);
+  const [sampleOverrides, setSampleOverrides] =
+    useState<Record<string, Partial<LocalProduct>>>(loadSampleOverrides);
+  const [deletedSampleIds, setDeletedSampleIds] =
+    useState<string[]>(loadDeletedSampleIds);
 
   // dialog state
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -138,8 +174,30 @@ export function AdminPage() {
     }
   });
 
-  // All products shown in admin = sample + local
-  const allProducts = [...SAMPLE_PRODUCTS, ...localProducts];
+  const [seenCount, setSeenCount] = useState<number>(() =>
+    Number(localStorage.getItem("rahmath_orders_seen_count") || "0"),
+  );
+  const [unseenCancelled, setUnseenCancelled] =
+    useState<string[]>(readCancelledOrders);
+
+  const newOrdersBadge = Math.max(0, orders.length - seenCount);
+  const totalBadge = newOrdersBadge + unseenCancelled.length;
+
+  const handleOrdersTabClick = () => {
+    setActiveTab("orders");
+    const newSeen = orders.length;
+    setSeenCount(newSeen);
+    localStorage.setItem("rahmath_orders_seen_count", String(newSeen));
+    setUnseenCancelled([]);
+    localStorage.setItem("rahmath_cancelled_orders", "[]");
+  };
+
+  // Merge sample products with overrides and filter deleted
+  const visibleSampleProducts = SAMPLE_PRODUCTS.filter(
+    (p) => !deletedSampleIds.includes(p.id),
+  ).map((p) => ({ ...p, ...(sampleOverrides[p.id] || {}) }));
+
+  const allProducts = [...visibleSampleProducts, ...localProducts];
 
   const totalRevenue = orders.reduce((s, o) => s + o.totalPrice, 0);
 
@@ -201,7 +259,6 @@ export function AdminPage() {
     try {
       const price = Number(form.price) || 0;
 
-      // Convert file to base64 if a new image was picked
       let finalImage = imagePreview;
       if (imageFile) {
         finalImage = await readFileAsBase64(imageFile);
@@ -211,25 +268,41 @@ export function AdminPage() {
       }
 
       if (editingId) {
-        // Update existing
-        const updated = localProducts.map((p) =>
-          p.id === editingId
-            ? {
-                ...p,
-                name: form.name,
-                description: form.description,
-                retailPrice: price,
-                wholesalePrice: Math.round(price * 0.8),
-                image: finalImage,
-                category: form.category || p.category,
-              }
-            : p,
-        );
-        setLocalProducts(updated);
-        saveLocalProducts(updated);
+        const isSample = editingId.startsWith("sp-");
+        if (isSample) {
+          // Store override for sample product
+          const updated = {
+            ...sampleOverrides,
+            [editingId]: {
+              name: form.name,
+              description: form.description,
+              retailPrice: price,
+              wholesalePrice: Math.round(price * 0.8),
+              image: finalImage,
+              category: form.category,
+            },
+          };
+          setSampleOverrides(updated);
+          saveSampleOverrides(updated);
+        } else {
+          const updated = localProducts.map((p) =>
+            p.id === editingId
+              ? {
+                  ...p,
+                  name: form.name,
+                  description: form.description,
+                  retailPrice: price,
+                  wholesalePrice: Math.round(price * 0.8),
+                  image: finalImage,
+                  category: form.category || p.category,
+                }
+              : p,
+          );
+          setLocalProducts(updated);
+          saveLocalProducts(updated);
+        }
         toast.success("Product updated!");
       } else {
-        // Add new
         const lp: LocalProduct = {
           id: `local-${Date.now()}`,
           name: form.name,
@@ -254,9 +327,15 @@ export function AdminPage() {
   };
 
   const handleDelete = (productId: string) => {
-    const updated = localProducts.filter((p) => p.id !== productId);
-    setLocalProducts(updated);
-    saveLocalProducts(updated);
+    if (productId.startsWith("sp-")) {
+      const updated = [...deletedSampleIds, productId];
+      setDeletedSampleIds(updated);
+      saveDeletedSampleIds(updated);
+    } else {
+      const updated = localProducts.filter((p) => p.id !== productId);
+      setLocalProducts(updated);
+      saveLocalProducts(updated);
+    }
     toast.success("Product deleted");
   };
 
@@ -353,7 +432,13 @@ export function AdminPage() {
             <button
               type="button"
               key={id}
-              onClick={() => setActiveTab(id)}
+              onClick={() => {
+                if (id === "orders") {
+                  handleOrdersTabClick();
+                } else {
+                  setActiveTab(id);
+                }
+              }}
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors ${
                 activeTab === id
                   ? "bg-sidebar-accent text-white"
@@ -362,7 +447,12 @@ export function AdminPage() {
               data-ocid="admin.tab"
             >
               <Icon className="w-4 h-4" />
-              {label}
+              <span className="flex-1 text-left">{label}</span>
+              {id === "orders" && totalBadge > 0 && (
+                <span className="ml-auto inline-flex items-center justify-center w-5 h-5 text-xs font-bold bg-red-500 text-white rounded-full">
+                  {totalBadge > 9 ? "9+" : totalBadge}
+                </span>
+              )}
             </button>
           ))}
         </nav>
@@ -642,61 +732,50 @@ export function AdminPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {allProducts.map((p, idx) => {
-                    const isLocal = p.id.startsWith("local-");
-                    return (
-                      <TableRow key={p.id} data-ocid={`admin.row.${idx + 1}`}>
-                        <TableCell>
-                          <img
-                            src={p.image}
-                            alt={p.name}
-                            className="w-10 h-10 object-cover rounded-md border"
-                          />
-                        </TableCell>
-                        <TableCell className="font-medium">{p.name}</TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className="text-xs">
-                            {p.category}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>₹{p.retailPrice}</TableCell>
-                        <TableCell className="text-green-700">
-                          ₹{p.wholesalePrice}
-                        </TableCell>
-                        <TableCell>{p.stock}</TableCell>
-                        <TableCell>
-                          {isLocal ? (
-                            <div className="flex items-center gap-2">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-8 w-8 p-0"
-                                onClick={() =>
-                                  openEditDialog(p as LocalProduct)
-                                }
-                                data-ocid={`admin.edit_button.${idx + 1}`}
-                              >
-                                <Pencil className="w-3 h-3" />
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="destructive"
-                                className="h-8 w-8 p-0"
-                                onClick={() => handleDelete(p.id)}
-                                data-ocid={`admin.delete_button.${idx + 1}`}
-                              >
-                                <Trash2 className="w-3 h-3" />
-                              </Button>
-                            </div>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">
-                              Default
-                            </span>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
+                  {allProducts.map((p, idx) => (
+                    <TableRow key={p.id} data-ocid={`admin.row.${idx + 1}`}>
+                      <TableCell>
+                        <img
+                          src={p.image}
+                          alt={p.name}
+                          className="w-10 h-10 object-cover rounded-md border"
+                        />
+                      </TableCell>
+                      <TableCell className="font-medium">{p.name}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="text-xs">
+                          {p.category}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>₹{p.retailPrice}</TableCell>
+                      <TableCell className="text-green-700">
+                        ₹{p.wholesalePrice}
+                      </TableCell>
+                      <TableCell>{p.stock}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 w-8 p-0"
+                            onClick={() => openEditDialog(p as LocalProduct)}
+                            data-ocid={`admin.edit_button.${idx + 1}`}
+                          >
+                            <Pencil className="w-3 h-3" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            className="h-8 w-8 p-0"
+                            onClick={() => handleDelete(p.id)}
+                            data-ocid={`admin.delete_button.${idx + 1}`}
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
                 </TableBody>
               </Table>
             </div>
@@ -729,58 +808,80 @@ export function AdminPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {orders.map((order, idx) => (
-                      <TableRow
-                        key={order.orderId}
-                        data-ocid={`admin.row.${idx + 1}`}
-                      >
-                        <TableCell className="font-mono text-xs">
-                          {order.orderId}
-                        </TableCell>
-                        <TableCell>
-                          <p className="font-medium text-sm">
-                            {order.customer.fullName}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {order.customer.mobile}
-                          </p>
-                        </TableCell>
-                        <TableCell className="text-sm">
-                          {order.items?.length || 0} item(s)
-                        </TableCell>
-                        <TableCell className="font-semibold">
-                          ₹{order.totalPrice.toFixed(0)}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className="text-xs">
-                            {order.paymentMethod === "qr" ? "QR/UPI" : "COD"}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Badge
-                            className={`text-xs ${STATUS_COLORS[order.status] || ""}`}
+                    {orders.map((order, idx) => {
+                      const isCancelled = order.status === "Cancelled";
+                      return (
+                        <TableRow
+                          key={order.orderId}
+                          className={isCancelled ? "bg-red-50/50" : ""}
+                          data-ocid={`admin.row.${idx + 1}`}
+                        >
+                          <TableCell
+                            className={`font-mono text-xs ${
+                              isCancelled ? "text-red-500" : ""
+                            }`}
                           >
-                            {order.status}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <select
-                            value={order.status}
-                            onChange={(e) =>
-                              updateOrderStatus(order.orderId, e.target.value)
-                            }
-                            className="text-xs border border-border rounded px-2 py-1 bg-background"
-                            data-ocid="admin.select"
+                            {order.orderId}
+                          </TableCell>
+                          <TableCell>
+                            <p
+                              className={`font-medium text-sm ${
+                                isCancelled
+                                  ? "line-through text-muted-foreground"
+                                  : ""
+                              }`}
+                            >
+                              {order.customer.fullName}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {order.customer.mobile}
+                            </p>
+                          </TableCell>
+                          <TableCell className="text-sm">
+                            {order.items?.length || 0} item(s)
+                          </TableCell>
+                          <TableCell
+                            className={`font-semibold ${
+                              isCancelled
+                                ? "text-muted-foreground line-through"
+                                : ""
+                            }`}
                           >
-                            {STATUS_OPTIONS.map((s) => (
-                              <option key={s} value={s}>
-                                {s}
-                              </option>
-                            ))}
-                          </select>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                            ₹{order.totalPrice.toFixed(0)}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className="text-xs">
+                              {order.paymentMethod === "qr" ? "QR/UPI" : "COD"}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Badge
+                              className={`text-xs font-semibold ${
+                                STATUS_COLORS[order.status] || ""
+                              } ${isCancelled ? "border border-red-300" : ""}`}
+                            >
+                              {order.status}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <select
+                              value={order.status}
+                              onChange={(e) =>
+                                updateOrderStatus(order.orderId, e.target.value)
+                              }
+                              className="text-xs border border-border rounded px-2 py-1 bg-background"
+                              data-ocid="admin.select"
+                            >
+                              {STATUS_OPTIONS.map((s) => (
+                                <option key={s} value={s}>
+                                  {s}
+                                </option>
+                              ))}
+                            </select>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </div>

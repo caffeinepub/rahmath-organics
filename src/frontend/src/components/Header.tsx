@@ -24,7 +24,7 @@ export function Header() {
             alt="Rahmath Organics"
             className="h-10 w-auto"
           />
-          <span className="text-green-700 font-bold text-lg leading-tight tracking-wide hidden sm:block">
+          <span className="text-green-700 font-bold text-lg leading-tight tracking-wide">
             Rahmath Organics
           </span>
         </Link>

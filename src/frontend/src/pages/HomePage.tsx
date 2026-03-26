@@ -59,7 +59,7 @@ export function HomePage() {
               <br />
               <span className="text-green-300">Organic.</span>
             </h1>
-            <p className="text-white/80 text-lg mb-6">
+            <p className="text-white font-bold text-lg mb-6">
               From farm to your table — ethically sourced, zero chemicals,
               maximum nutrition.
             </p>

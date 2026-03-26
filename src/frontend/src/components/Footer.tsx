@@ -78,10 +78,22 @@ export function Footer() {
           </h4>
           <ul className="space-y-2 text-sm text-sidebar-foreground/70">
             <li>
-              <span>📞 +91 98765 43210</span>
+              <a
+                href="https://www.instagram.com/rahamath_organics"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:text-white transition-colors"
+              >
+                📷 rahamath_organics
+              </a>
             </li>
             <li>
-              <span>✉️ hello@rahmath.in</span>
+              <a
+                href="mailto:Rahamathorganics@gmail.com"
+                className="hover:text-white transition-colors"
+              >
+                ✉️ Rahamathorganics@gmail.com
+              </a>
             </li>
             <li>
               <span>🕐 Mon–Sat 9am–6pm</span>
