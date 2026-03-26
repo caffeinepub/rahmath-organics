@@ -12,11 +12,11 @@ export function Header() {
   return (
     <header className="bg-white shadow-nav sticky top-0 z-40">
       <div className="container mx-auto flex items-center justify-between h-16 px-4">
-        {/* Logo */}
+        {/* Logo + Brand Name */}
         <Link
           to="/"
           search={{ mode: undefined }}
-          className="flex items-center"
+          className="flex items-center gap-2"
           data-ocid="nav.link"
         >
           <img
@@ -24,6 +24,9 @@ export function Header() {
             alt="Rahmath Organics"
             className="h-10 w-auto"
           />
+          <span className="text-green-700 font-bold text-lg leading-tight tracking-wide hidden sm:block">
+            Rahmath Organics
+          </span>
         </Link>
 
         {/* Desktop Nav */}
