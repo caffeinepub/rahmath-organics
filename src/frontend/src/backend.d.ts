@@ -68,4 +68,8 @@ export interface backendInterface {
     getTrendingProducts(): Promise<Array<TrendingProduct>>;
     getVendor(vendorId: string): Promise<Vendor | null>;
     isCallerAdmin(): Promise<boolean>;
+    kvSet(key: string, value: string): Promise<void>;
+    kvDelete(key: string): Promise<void>;
+    kvGet(key: string): Promise<string | null>;
+    kvGetAll(): Promise<Array<[string, string]>>;
 }

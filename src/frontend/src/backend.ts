@@ -161,6 +161,10 @@ export interface backendInterface {
     getTrendingProducts(): Promise<Array<TrendingProduct>>;
     getVendor(vendorId: string): Promise<Vendor | null>;
     isCallerAdmin(): Promise<boolean>;
+    kvSet(key: string, value: string): Promise<void>;
+    kvDelete(key: string): Promise<void>;
+    kvGet(key: string): Promise<string | null>;
+    kvGetAll(): Promise<Array<[string, string]>>;
 }
 import type { ExternalBlob as _ExternalBlob, Order as _Order, Product as _Product, ProductInput as _ProductInput, UserRole as _UserRole, Vendor as _Vendor, _CaffeineStorageRefillInformation as __CaffeineStorageRefillInformation, _CaffeineStorageRefillResult as __CaffeineStorageRefillResult } from "./declarations/backend.did.d.ts";
 export class Backend implements backendInterface {
@@ -458,6 +462,22 @@ export class Backend implements backendInterface {
             const result = await this.actor.isCallerAdmin();
             return result;
         }
+    }
+    async kvSet(key: string, value: string): Promise<void> {
+        const result = await this.actor.kvSet(key, value);
+        return result;
+    }
+    async kvDelete(key: string): Promise<void> {
+        const result = await this.actor.kvDelete(key);
+        return result;
+    }
+    async kvGet(key: string): Promise<string | null> {
+        const result = await this.actor.kvGet(key);
+        return result.length === 0 ? null : result[0];
+    }
+    async kvGetAll(): Promise<Array<[string, string]>> {
+        const result = await this.actor.kvGetAll();
+        return result;
     }
 }
 async function from_candid_ExternalBlob_n18(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _ExternalBlob): Promise<ExternalBlob> {

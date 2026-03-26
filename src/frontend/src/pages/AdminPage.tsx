@@ -19,9 +19,13 @@ import {
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { SAMPLE_PRODUCTS } from "@/data/sampleProducts";
+import { useActor } from "@/hooks/useActor";
+import { useKvGetAll } from "@/hooks/useQueries";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   ImageIcon,
   LayoutDashboard,
+  Loader2,
   Lock,
   Package,
   Pencil,
@@ -30,7 +34,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { motion } from "motion/react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 
 type Tab = "dashboard" | "products" | "orders";
@@ -89,42 +93,6 @@ const EMPTY_FORM: FormState = {
   category: "",
 };
 
-function loadLocalProducts(): LocalProduct[] {
-  try {
-    return JSON.parse(localStorage.getItem("rahmath_local_products") || "[]");
-  } catch {
-    return [];
-  }
-}
-
-function saveLocalProducts(products: LocalProduct[]) {
-  localStorage.setItem("rahmath_local_products", JSON.stringify(products));
-}
-
-function loadSampleOverrides(): Record<string, Partial<LocalProduct>> {
-  try {
-    return JSON.parse(localStorage.getItem("rahmath_sample_overrides") || "{}");
-  } catch {
-    return {};
-  }
-}
-
-function saveSampleOverrides(overrides: Record<string, Partial<LocalProduct>>) {
-  localStorage.setItem("rahmath_sample_overrides", JSON.stringify(overrides));
-}
-
-function loadDeletedSampleIds(): string[] {
-  try {
-    return JSON.parse(localStorage.getItem("rahmath_deleted_samples") || "[]");
-  } catch {
-    return [];
-  }
-}
-
-function saveDeletedSampleIds(ids: string[]) {
-  localStorage.setItem("rahmath_deleted_samples", JSON.stringify(ids));
-}
-
 function readFileAsBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -151,13 +119,6 @@ export function AdminPage() {
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState("");
 
-  const [localProducts, setLocalProducts] =
-    useState<LocalProduct[]>(loadLocalProducts);
-  const [sampleOverrides, setSampleOverrides] =
-    useState<Record<string, Partial<LocalProduct>>>(loadSampleOverrides);
-  const [deletedSampleIds, setDeletedSampleIds] =
-    useState<string[]>(loadDeletedSampleIds);
-
   // dialog state
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -183,14 +144,50 @@ export function AdminPage() {
   const newOrdersBadge = Math.max(0, orders.length - seenCount);
   const totalBadge = newOrdersBadge + unseenCancelled.length;
 
-  const handleOrdersTabClick = () => {
-    setActiveTab("orders");
-    const newSeen = orders.length;
-    setSeenCount(newSeen);
-    localStorage.setItem("rahmath_orders_seen_count", String(newSeen));
-    setUnseenCancelled([]);
-    localStorage.setItem("rahmath_cancelled_orders", "[]");
-  };
+  const { actor } = useActor();
+  const queryClient = useQueryClient();
+  const { data: kvData, isLoading: kvLoading } = useKvGetAll();
+
+  // Parse products from kv store
+  const localProducts: LocalProduct[] = kvData
+    ? (kvData
+        .filter(([k]) => k.startsWith("p:"))
+        .map(([, v]) => {
+          try {
+            return JSON.parse(v) as LocalProduct;
+          } catch {
+            return null;
+          }
+        })
+        .filter(Boolean) as LocalProduct[])
+    : [];
+
+  const deletedSampleIds: string[] = kvData
+    ? (() => {
+        const entry = kvData.find(([k]) => k === "deleted-samples");
+        if (!entry) return [];
+        try {
+          return JSON.parse(entry[1]) as string[];
+        } catch {
+          return [];
+        }
+      })()
+    : [];
+
+  const sampleOverrides: Record<string, Partial<LocalProduct>> = kvData
+    ? Object.fromEntries(
+        kvData
+          .filter(([k]) => k.startsWith("override:"))
+          .map(([k, v]) => {
+            try {
+              return [k.replace("override:", ""), JSON.parse(v)];
+            } catch {
+              return null;
+            }
+          })
+          .filter(Boolean) as [string, Partial<LocalProduct>][],
+      )
+    : {};
 
   // Merge sample products with overrides and filter deleted
   const visibleSampleProducts = SAMPLE_PRODUCTS.filter(
@@ -219,6 +216,15 @@ export function AdminPage() {
     } else {
       setLoginError("Invalid username or password");
     }
+  };
+
+  const handleOrdersTabClick = () => {
+    setActiveTab("orders");
+    const newSeen = orders.length;
+    setSeenCount(newSeen);
+    localStorage.setItem("rahmath_orders_seen_count", String(newSeen));
+    setUnseenCancelled([]);
+    localStorage.setItem("rahmath_cancelled_orders", "[]");
   };
 
   const openAddDialog = () => {
@@ -255,12 +261,21 @@ export function AdminPage() {
       toast.error("Product name is required");
       return;
     }
+    if (!actor) {
+      toast.error("Not connected to backend. Please wait and try again.");
+      return;
+    }
     setSaving(true);
     try {
       const price = Number(form.price) || 0;
 
       let finalImage = imagePreview;
       if (imageFile) {
+        if (imageFile.size > 200 * 1024) {
+          toast.warning(
+            "Image is over 200KB — this may be slow to save. Consider using a smaller image.",
+          );
+        }
         finalImage = await readFileAsBase64(imageFile);
       }
       if (!finalImage) {
@@ -270,41 +285,40 @@ export function AdminPage() {
       if (editingId) {
         const isSample = editingId.startsWith("sp-");
         if (isSample) {
-          // Store override for sample product
-          const updated = {
-            ...sampleOverrides,
-            [editingId]: {
+          const overrideData = {
+            name: form.name,
+            description: form.description,
+            retailPrice: price,
+            wholesalePrice: Math.round(price * 0.8),
+            image: finalImage,
+            category: form.category,
+          };
+          await actor.kvSet(
+            `override:${editingId}`,
+            JSON.stringify(overrideData),
+          );
+          await queryClient.invalidateQueries({ queryKey: ["kv-store"] });
+        } else {
+          const existing = localProducts.find((p) => p.id === editingId);
+          if (existing) {
+            const updated = {
+              ...existing,
               name: form.name,
               description: form.description,
               retailPrice: price,
               wholesalePrice: Math.round(price * 0.8),
               image: finalImage,
-              category: form.category,
-            },
-          };
-          setSampleOverrides(updated);
-          saveSampleOverrides(updated);
-        } else {
-          const updated = localProducts.map((p) =>
-            p.id === editingId
-              ? {
-                  ...p,
-                  name: form.name,
-                  description: form.description,
-                  retailPrice: price,
-                  wholesalePrice: Math.round(price * 0.8),
-                  image: finalImage,
-                  category: form.category || p.category,
-                }
-              : p,
-          );
-          setLocalProducts(updated);
-          saveLocalProducts(updated);
+              category: form.category || existing.category,
+            };
+            await actor.kvSet(`p:${editingId}`, JSON.stringify(updated));
+            await queryClient.invalidateQueries({ queryKey: ["kv-store"] });
+          }
         }
         toast.success("Product updated!");
       } else {
+        const newId = `local-${Date.now()}`;
         const lp: LocalProduct = {
-          id: `local-${Date.now()}`,
+          id: newId,
           name: form.name,
           description: form.description,
           retailPrice: price,
@@ -315,28 +329,38 @@ export function AdminPage() {
           stock: 100,
           category: form.category || "Organic",
         };
-        const updated = [...localProducts, lp];
-        setLocalProducts(updated);
-        saveLocalProducts(updated);
+        await actor.kvSet(`p:${newId}`, JSON.stringify(lp));
+        await queryClient.invalidateQueries({ queryKey: ["kv-store"] });
         toast.success("Product added!");
       }
       closeDialog();
+    } catch (err) {
+      toast.error("Failed to save product. Please try again.");
+      console.error(err);
     } finally {
       setSaving(false);
     }
   };
 
-  const handleDelete = (productId: string) => {
-    if (productId.startsWith("sp-")) {
-      const updated = [...deletedSampleIds, productId];
-      setDeletedSampleIds(updated);
-      saveDeletedSampleIds(updated);
-    } else {
-      const updated = localProducts.filter((p) => p.id !== productId);
-      setLocalProducts(updated);
-      saveLocalProducts(updated);
+  const handleDelete = async (productId: string) => {
+    if (!actor) {
+      toast.error("Not connected to backend.");
+      return;
     }
-    toast.success("Product deleted");
+    try {
+      if (productId.startsWith("sp-")) {
+        const updated = [...deletedSampleIds, productId];
+        await actor.kvSet("deleted-samples", JSON.stringify(updated));
+        await queryClient.invalidateQueries({ queryKey: ["kv-store"] });
+      } else {
+        await actor.kvDelete(`p:${productId}`);
+        await queryClient.invalidateQueries({ queryKey: ["kv-store"] });
+      }
+      toast.success("Product deleted");
+    } catch (err) {
+      toast.error("Failed to delete product.");
+      console.error(err);
+    }
   };
 
   if (!isLoggedIn) {
@@ -611,6 +635,9 @@ export function AdminPage() {
                     </div>
                     <div>
                       <Label>Product Image</Label>
+                      <p className="text-xs text-muted-foreground mt-0.5 mb-1">
+                        ⚠️ Keep images under 200KB for best performance
+                      </p>
                       <label
                         htmlFor="product-image-upload"
                         className={`mt-1 flex flex-col items-center justify-center border-2 border-dashed rounded-lg p-4 cursor-pointer transition-colors ${
@@ -674,7 +701,7 @@ export function AdminPage() {
                       </div>
                       <div>
                         <Label>Category</Label>
-                        <Input
+                        <select
                           value={form.category}
                           onChange={(e) =>
                             setForm((f) => ({
@@ -682,10 +709,22 @@ export function AdminPage() {
                               category: e.target.value,
                             }))
                           }
-                          placeholder="e.g. Spices"
-                          className="mt-1"
-                          data-ocid="admin.input"
-                        />
+                          className="mt-1 w-full border border-input rounded-md px-3 py-2 text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                          data-ocid="admin.select"
+                        >
+                          <option value="">Select Category</option>
+                          <option value="Henna">Henna</option>
+                          <option value="Sweeteners">Sweeteners</option>
+                          <option value="Oils">Oils</option>
+                          <option value="Spices">Spices</option>
+                          <option value="Packs">Packs</option>
+                          <option value="Toys">Toys</option>
+                          <option value="Jewels">Jewels</option>
+                          <option value="Gift Hamper">Gift Hamper</option>
+                          <option value="Dry Fruits">Dry Fruits</option>
+                          <option value="Teas">Teas</option>
+                          <option value="Superfoods">Superfoods</option>
+                        </select>
                       </div>
                     </div>
                     {form.price && Number(form.price) > 0 && (
@@ -703,7 +742,16 @@ export function AdminPage() {
                         disabled={saving}
                         data-ocid="admin.confirm_button"
                       >
-                        {editingId ? "Save Changes" : "Add Product"}
+                        {saving ? (
+                          <span className="flex items-center gap-2">
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Saving...
+                          </span>
+                        ) : editingId ? (
+                          "Save Changes"
+                        ) : (
+                          "Add Product"
+                        )}
                       </Button>
                       <Button
                         variant="outline"
@@ -718,67 +766,77 @@ export function AdminPage() {
               </Dialog>
             </div>
 
-            <div className="bg-card border border-border rounded-xl overflow-hidden">
-              <Table data-ocid="admin.table">
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Image</TableHead>
-                    <TableHead>Product</TableHead>
-                    <TableHead>Category</TableHead>
-                    <TableHead>Retail</TableHead>
-                    <TableHead>Wholesale</TableHead>
-                    <TableHead>Stock</TableHead>
-                    <TableHead>Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {allProducts.map((p, idx) => (
-                    <TableRow key={p.id} data-ocid={`admin.row.${idx + 1}`}>
-                      <TableCell>
-                        <img
-                          src={p.image}
-                          alt={p.name}
-                          className="w-10 h-10 object-cover rounded-md border"
-                        />
-                      </TableCell>
-                      <TableCell className="font-medium">{p.name}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className="text-xs">
-                          {p.category}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>₹{p.retailPrice}</TableCell>
-                      <TableCell className="text-green-700">
-                        ₹{p.wholesalePrice}
-                      </TableCell>
-                      <TableCell>{p.stock}</TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-8 w-8 p-0"
-                            onClick={() => openEditDialog(p as LocalProduct)}
-                            data-ocid={`admin.edit_button.${idx + 1}`}
-                          >
-                            <Pencil className="w-3 h-3" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="destructive"
-                            className="h-8 w-8 p-0"
-                            onClick={() => handleDelete(p.id)}
-                            data-ocid={`admin.delete_button.${idx + 1}`}
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </Button>
-                        </div>
-                      </TableCell>
+            {kvLoading ? (
+              <div
+                className="flex items-center justify-center py-20 text-muted-foreground gap-3"
+                data-ocid="admin.loading_state"
+              >
+                <Loader2 className="w-6 h-6 animate-spin" />
+                <span>Loading products from backend…</span>
+              </div>
+            ) : (
+              <div className="bg-card border border-border rounded-xl overflow-hidden">
+                <Table data-ocid="admin.table">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Image</TableHead>
+                      <TableHead>Product</TableHead>
+                      <TableHead>Category</TableHead>
+                      <TableHead>Retail</TableHead>
+                      <TableHead>Wholesale</TableHead>
+                      <TableHead>Stock</TableHead>
+                      <TableHead>Actions</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+                  </TableHeader>
+                  <TableBody>
+                    {allProducts.map((p, idx) => (
+                      <TableRow key={p.id} data-ocid={`admin.row.${idx + 1}`}>
+                        <TableCell>
+                          <img
+                            src={p.image}
+                            alt={p.name}
+                            className="w-10 h-10 object-cover rounded-md border"
+                          />
+                        </TableCell>
+                        <TableCell className="font-medium">{p.name}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="text-xs">
+                            {p.category}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>₹{p.retailPrice}</TableCell>
+                        <TableCell className="text-green-700">
+                          ₹{p.wholesalePrice}
+                        </TableCell>
+                        <TableCell>{p.stock}</TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-8 w-8 p-0"
+                              onClick={() => openEditDialog(p as LocalProduct)}
+                              data-ocid={`admin.edit_button.${idx + 1}`}
+                            >
+                              <Pencil className="w-3 h-3" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              className="h-8 w-8 p-0"
+                              onClick={() => handleDelete(p.id)}
+                              data-ocid={`admin.delete_button.${idx + 1}`}
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
           </motion.div>
         )}
 

@@ -11,7 +11,7 @@ export function Footer() {
           <div className="flex items-center gap-2 mb-4">
             <img
               src="/assets/uploads/logo-019d2a55-dc4d-77d7-a037-2e6570260456-1.jpeg"
-              alt="Rahmath Organics"
+              alt="Rahamath Organics"
               className="h-12 w-auto"
             />
           </div>

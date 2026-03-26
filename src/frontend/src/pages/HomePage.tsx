@@ -1,32 +1,140 @@
 import { ProductCard } from "@/components/ProductCard";
 import { Button } from "@/components/ui/button";
+import { useSearch } from "@/contexts/SearchContext";
 import { SAMPLE_PRODUCTS, type SampleProduct } from "@/data/sampleProducts";
+import { useKvGetAll } from "@/hooks/useQueries";
 import { useNavigate } from "@tanstack/react-router";
-import { ChevronRight, Filter } from "lucide-react";
+import { ChevronLeft, ChevronRight, Filter, SearchX } from "lucide-react";
 import { motion } from "motion/react";
-import { useState } from "react";
-
-function loadLocalProducts(): SampleProduct[] {
-  try {
-    return JSON.parse(localStorage.getItem("rahmath_local_products") || "[]");
-  } catch {
-    return [];
-  }
-}
+import { useEffect, useState } from "react";
 
 const CATEGORIES = [
+  { label: "All", emoji: "🛒" },
   { label: "Henna", emoji: "🌿" },
   { label: "Sweeteners", emoji: "🍯" },
   { label: "Oils", emoji: "🫙" },
   { label: "Spices", emoji: "🌶️" },
+  { label: "Packs", emoji: "📦" },
+  { label: "Toys", emoji: "🧸" },
+  { label: "Jewels", emoji: "💎" },
+  { label: "Gift Hamper", emoji: "🎁" },
+];
+
+const SLIDES = [
+  {
+    bg: "from-purple-700 to-purple-500",
+    emoji: "🎁",
+    title: "Festival Gift Hampers Available",
+    subtitle: "Curated organic gift boxes for every occasion",
+  },
+  {
+    bg: "from-green-700 to-green-500",
+    emoji: "🌿",
+    title: "100% Organic & Natural",
+    subtitle: "Ethically sourced, zero chemicals, maximum nutrition",
+  },
+  {
+    bg: "from-amber-600 to-amber-400",
+    emoji: "🍯",
+    title: "Pure Wild Forest Honey",
+    subtitle: "Raw, unfiltered — straight from nature",
+  },
+  {
+    bg: "from-teal-700 to-teal-500",
+    emoji: "🚚",
+    title: "Free Delivery on Orders Above ₹500",
+    subtitle: "Pan-India delivery, COD & UPI supported",
+  },
+];
+
+const FEATURES = [
+  { icon: "🚚", title: "Free Shipping", desc: "On orders above ₹499" },
+  { icon: "🛡️", title: "100% Authentic", desc: "Certified organic products" },
+  { icon: "🌱", title: "Eco-Friendly", desc: "Sustainable packaging" },
 ];
 
 export function HomePage() {
   const [isWholesale, setIsWholesale] = useState(false);
+  const [activeCategory, setActiveCategory] = useState("All");
+  const [currentSlide, setCurrentSlide] = useState(0);
   const navigate = useNavigate();
+  const { searchQuery, setSearchQuery } = useSearch();
 
-  const localProducts = loadLocalProducts();
-  const products: SampleProduct[] = [...SAMPLE_PRODUCTS, ...localProducts];
+  const { data: kvData } = useKvGetAll();
+
+  // Parse products, overrides, and deleted IDs from kv store
+  const localProducts: SampleProduct[] = kvData
+    ? (kvData
+        .filter(([k]) => k.startsWith("p:"))
+        .map(([, v]) => {
+          try {
+            return JSON.parse(v) as SampleProduct;
+          } catch {
+            return null;
+          }
+        })
+        .filter(Boolean) as SampleProduct[])
+    : [];
+
+  const deletedSampleIds: string[] = kvData
+    ? (() => {
+        const entry = kvData.find(([k]) => k === "deleted-samples");
+        if (!entry) return [];
+        try {
+          return JSON.parse(entry[1]) as string[];
+        } catch {
+          return [];
+        }
+      })()
+    : [];
+
+  const sampleOverrides: Record<string, Partial<SampleProduct>> = kvData
+    ? Object.fromEntries(
+        kvData
+          .filter(([k]) => k.startsWith("override:"))
+          .map(([k, v]) => {
+            try {
+              return [k.replace("override:", ""), JSON.parse(v)];
+            } catch {
+              return null;
+            }
+          })
+          .filter(Boolean) as [string, Partial<SampleProduct>][],
+      )
+    : {};
+
+  const visibleSamples = SAMPLE_PRODUCTS.filter(
+    (p) => !deletedSampleIds.includes(p.id),
+  ).map((p) => ({ ...p, ...(sampleOverrides[p.id] || {}) }));
+
+  const allProducts: SampleProduct[] = [...visibleSamples, ...localProducts];
+
+  const categoryFiltered =
+    activeCategory === "All"
+      ? allProducts
+      : allProducts.filter(
+          (p) => p.category?.toLowerCase() === activeCategory.toLowerCase(),
+        );
+
+  const filteredProducts = searchQuery.trim()
+    ? categoryFiltered.filter((p) => {
+        const q = searchQuery.trim().toLowerCase();
+        return (
+          p.name?.toLowerCase().includes(q) ||
+          p.description?.toLowerCase().includes(q) ||
+          p.category?.toLowerCase().includes(q)
+        );
+      })
+    : categoryFiltered;
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentSlide((prev) => (prev + 1) % SLIDES.length);
+    }, 4000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const slide = SLIDES[currentSlide];
 
   return (
     <main>
@@ -37,7 +145,7 @@ export function HomePage() {
       >
         <img
           src="/assets/generated/hero-organic-new.dim_1400x500.jpg"
-          alt="Rahmath Organics Hero"
+          alt="Rahamath Organics Hero"
           className="absolute inset-0 w-full h-full object-cover"
         />
         <div className="absolute inset-0 bg-gradient-to-r from-navy-900/85 via-navy-800/60 to-transparent" />
@@ -88,14 +196,109 @@ export function HomePage() {
         </div>
       </section>
 
+      {/* Promotional Banner Slider */}
+      <section className="py-4 px-4">
+        <div className="container mx-auto max-w-5xl">
+          <div
+            className={`relative rounded-2xl overflow-hidden bg-gradient-to-r ${slide.bg} text-white text-center py-10 px-6`}
+          >
+            {/* Left arrow */}
+            <button
+              type="button"
+              onClick={() =>
+                setCurrentSlide(
+                  (prev) => (prev - 1 + SLIDES.length) % SLIDES.length,
+                )
+              }
+              className="absolute left-4 top-1/2 -translate-y-1/2 bg-white/20 hover:bg-white/30 rounded-full p-2 transition-colors"
+              data-ocid="slider.button"
+            >
+              <ChevronLeft className="w-5 h-5 text-white" />
+            </button>
+
+            {/* Slide content */}
+            <motion.div
+              key={currentSlide}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4 }}
+            >
+              <div className="text-5xl mb-3">{slide.emoji}</div>
+              <h2 className="text-2xl font-bold mb-2">{slide.title}</h2>
+              <p className="text-sm opacity-90 mb-4">{slide.subtitle}</p>
+            </motion.div>
+
+            {/* Dot indicators */}
+            <div className="flex justify-center gap-2 mt-2">
+              {SLIDES.map((s, i) => (
+                <button
+                  key={s.title}
+                  type="button"
+                  onClick={() => setCurrentSlide(i)}
+                  className={`rounded-full transition-all ${
+                    i === currentSlide
+                      ? "w-6 h-2 bg-white"
+                      : "w-2 h-2 bg-white/40"
+                  }`}
+                  data-ocid="slider.toggle"
+                />
+              ))}
+            </div>
+
+            {/* Right arrow */}
+            <button
+              type="button"
+              onClick={() =>
+                setCurrentSlide((prev) => (prev + 1) % SLIDES.length)
+              }
+              className="absolute right-4 top-1/2 -translate-y-1/2 bg-white/20 hover:bg-white/30 rounded-full p-2 transition-colors"
+              data-ocid="slider.button"
+            >
+              <ChevronRight className="w-5 h-5 text-white" />
+            </button>
+          </div>
+
+          {/* Feature cards */}
+          <div className="grid grid-cols-3 gap-4 mt-4">
+            {FEATURES.map((f) => (
+              <div
+                key={f.title}
+                className="bg-white rounded-xl p-4 flex items-center gap-3 shadow-sm border border-border"
+              >
+                <div className="flex-shrink-0 w-10 h-10 bg-amber-50 rounded-full flex items-center justify-center text-xl">
+                  {f.icon}
+                </div>
+                <div>
+                  <p className="font-semibold text-sm text-foreground">
+                    {f.title}
+                  </p>
+                  <p className="text-xs text-muted-foreground">{f.desc}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* Products section */}
       <section id="products" className="container mx-auto px-4 py-12">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
           <div>
             <h2 className="text-2xl font-bold text-foreground">Our Products</h2>
-            <p className="text-muted-foreground text-sm mt-1">
-              Premium organic products, straight from nature
-            </p>
+            {searchQuery.trim() ? (
+              <p className="text-muted-foreground text-sm mt-1">
+                Search results for:{" "}
+                <span className="font-semibold text-green-700">
+                  &ldquo;{searchQuery}&rdquo;
+                </span>{" "}
+                — {filteredProducts.length} product
+                {filteredProducts.length !== 1 ? "s" : ""} found
+              </p>
+            ) : (
+              <p className="text-muted-foreground text-sm mt-1">
+                Premium organic products, straight from nature
+              </p>
+            )}
           </div>
           <div className="flex items-center gap-4">
             {/* Retail/Wholesale toggle */}
@@ -134,6 +337,26 @@ export function HomePage() {
           </div>
         </div>
 
+        {/* Category filter pills */}
+        <div className="flex flex-wrap gap-2 mb-6">
+          {CATEGORIES.map((cat) => (
+            <button
+              key={cat.label}
+              type="button"
+              onClick={() => setActiveCategory(cat.label)}
+              className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all ${
+                activeCategory === cat.label
+                  ? "bg-green-700 text-white shadow-md"
+                  : "bg-amber-50 border border-amber-200 text-amber-800 hover:bg-amber-100"
+              }`}
+              data-ocid="product.tab"
+            >
+              <span>{cat.emoji}</span>
+              {cat.label}
+            </button>
+          ))}
+        </div>
+
         {isWholesale && (
           <div className="bg-navy-50 border border-navy-100 rounded-lg px-4 py-3 mb-6 text-sm text-navy-700">
             🏪 <strong>Wholesale Pricing Active</strong> — Prices shown at 20%
@@ -141,43 +364,57 @@ export function HomePage() {
           </div>
         )}
 
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4"
-        >
-          {products.map((product, i) => (
-            <ProductCard
-              key={product.id}
-              product={product}
-              isWholesale={isWholesale}
-              index={i + 1}
-            />
-          ))}
-        </motion.div>
-
-        {/* Category strip */}
-        <motion.div
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.2 }}
-          className="mt-12 text-center"
-        >
-          <p className="text-xs font-semibold uppercase tracking-widest text-green-700 mb-4">
-            Shop by Category
-          </p>
-          <div className="flex flex-wrap justify-center gap-3">
-            {CATEGORIES.map((cat) => (
-              <span
-                key={cat.label}
-                className="inline-flex items-center gap-2 px-5 py-2 rounded-full bg-green-50 border border-green-200 text-green-800 text-sm font-medium shadow-sm hover:bg-green-100 hover:border-green-400 transition-colors cursor-default select-none"
-              >
-                <span>{cat.emoji}</span>
-                {cat.label}
-              </span>
-            ))}
+        {filteredProducts.length === 0 ? (
+          <div
+            className="text-center py-16 text-muted-foreground"
+            data-ocid="product.empty_state"
+          >
+            {searchQuery.trim() ? (
+              <>
+                <SearchX className="w-16 h-16 mx-auto mb-4 text-muted-foreground/40" />
+                <p className="text-lg font-medium">
+                  No products found for &ldquo;{searchQuery}&rdquo;
+                </p>
+                <p className="text-sm mt-1">
+                  Try a different search term or browse by category.
+                </p>
+                <Button
+                  variant="outline"
+                  className="mt-4"
+                  onClick={() => setSearchQuery("")}
+                  data-ocid="search.button"
+                >
+                  Clear Search
+                </Button>
+              </>
+            ) : (
+              <>
+                <p className="text-4xl mb-4">📦</p>
+                <p className="text-lg font-medium">
+                  No products in this category yet.
+                </p>
+                <p className="text-sm mt-1">
+                  Check back soon or explore other categories.
+                </p>
+              </>
+            )}
           </div>
-        </motion.div>
+        ) : (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4"
+          >
+            {filteredProducts.map((product, i) => (
+              <ProductCard
+                key={product.id}
+                product={product}
+                isWholesale={isWholesale}
+                index={i + 1}
+              />
+            ))}
+          </motion.div>
+        )}
       </section>
 
       {/* Features strip */}

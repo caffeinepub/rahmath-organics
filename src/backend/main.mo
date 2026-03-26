@@ -63,6 +63,29 @@ actor {
   let orders = Map.empty<Text, Order>();
   let carts = Map.empty<Principal, Cart>();
 
+  // === Simple key-value store for product data (stored as JSON text) ===
+  // Keys for products: "p:{id}" -> product JSON
+  // Keys for config: "cfg:{key}" -> JSON value
+  let kvStore = Map.empty<Text, Text>();
+
+  public shared func kvSet(key : Text, value : Text) : async () {
+    kvStore.add(key, value);
+  };
+
+  public shared func kvDelete(key : Text) : async () {
+    kvStore.remove(key);
+  };
+
+  public query func kvGet(key : Text) : async ?Text {
+    kvStore.get(key);
+  };
+
+  public query func kvGetAll() : async [(Text, Text)] {
+    kvStore.toArray();
+  };
+
+  // === Legacy product functions (kept for compatibility) ===
+
   func addTrendingProduct(productId : Text, purchaseCount : Nat) {
     trendingProducts.add(productId, purchaseCount);
   };
@@ -184,7 +207,6 @@ actor {
     image : ?Storage.ExternalBlob;
   };
 
-  // Open to all callers — frontend admin page is protected by username/password
   public shared ({ caller }) func addProductWithoutVendor(input : ProductInput) : async () {
     let productId = input.name # "-" # caller.toText();
     let placeholderImage : Storage.ExternalBlob = "" : Blob;

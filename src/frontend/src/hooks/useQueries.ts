@@ -82,3 +82,43 @@ export function useDeleteProduct() {
     },
   });
 }
+
+export function useKvGetAll() {
+  const { actor, isFetching } = useActor();
+  return useQuery<Array<[string, string]>>({
+    queryKey: ["kv-store"],
+    queryFn: async () => {
+      if (!actor) return [];
+      return actor.kvGetAll();
+    },
+    enabled: !!actor && !isFetching,
+  });
+}
+
+export function useKvSet() {
+  const { actor } = useActor();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ key, value }: { key: string; value: string }) => {
+      if (!actor) throw new Error("Not connected");
+      return actor.kvSet(key, value);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["kv-store"] });
+    },
+  });
+}
+
+export function useKvDelete() {
+  const { actor } = useActor();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (key: string) => {
+      if (!actor) throw new Error("Not connected");
+      return actor.kvDelete(key);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["kv-store"] });
+    },
+  });
+}
