@@ -92,6 +92,8 @@ export function useKvGetAll() {
       return actor.kvGetAll();
     },
     enabled: !!actor,
+    staleTime: 0, // always consider data stale so refetch is triggered
+    refetchInterval: 10000, // poll every 10 seconds so other devices see new products
   });
 }
 

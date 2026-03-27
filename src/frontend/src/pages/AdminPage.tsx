@@ -93,10 +93,11 @@ const EMPTY_FORM: FormState = {
   category: "",
 };
 
+// Very aggressive compression to keep payload small and avoid replica rejection
 function compressAndResizeImage(
   file: File,
-  maxSize = 200,
-  quality = 0.5,
+  maxSize = 80,
+  quality = 0.3,
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -301,12 +302,17 @@ export function AdminPage() {
     try {
       const price = Number(form.price) || 0;
 
-      let finalImage = imagePreview;
+      let finalImage = "";
+      // Only include image if a new file was selected — skip existing preview for edits
+      // to avoid re-storing large base64 strings that might already be in the backend
       if (imageFile) {
         finalImage = await compressAndResizeImage(imageFile);
+      } else if (imagePreview && !imagePreview.startsWith("data:")) {
+        // Keep non-base64 URLs (e.g. /assets/...)
+        finalImage = imagePreview;
       }
       if (!finalImage) {
-        finalImage = "/assets/generated/hero-organic-new.dim_1400x500.jpg";
+        finalImage = "/assets/generated/product-honey.dim_400x400.jpg";
       }
 
       if (editingId) {
@@ -358,12 +364,22 @@ export function AdminPage() {
         };
         await actor.kvSet(`p:${newId}`, JSON.stringify(lp));
         await queryClient.refetchQueries({ queryKey: ["kv-store"] });
-        toast.success("Product added!");
+        toast.success("Product added successfully!");
       }
       closeDialog();
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
-      toast.error(`Failed to save product: ${errMsg.slice(0, 80)}`);
+      // If image might be the cause, give a helpful suggestion
+      if (
+        errMsg.toLowerCase().includes("rejection") ||
+        errMsg.toLowerCase().includes("reject")
+      ) {
+        toast.error(
+          "Failed to save product. If you uploaded an image, try again without an image first, or use a smaller image.",
+        );
+      } else {
+        toast.error(`Failed to save product: ${errMsg.slice(0, 100)}`);
+      }
       console.error(err);
     } finally {
       setSaving(false);
@@ -662,10 +678,12 @@ export function AdminPage() {
                       />
                     </div>
                     <div>
-                      <Label>Product Image</Label>
-                      <p className="text-xs text-muted-foreground mt-0.5 mb-1">
-                        Images are automatically compressed for fast saving
-                      </p>
+                      <Label>
+                        Product Image{" "}
+                        <span className="text-xs text-muted-foreground">
+                          (optional — keep small for best results)
+                        </span>
+                      </Label>
                       <label
                         htmlFor="product-image-upload"
                         className={`mt-1 flex flex-col items-center justify-center border-2 border-dashed rounded-lg p-4 cursor-pointer transition-colors ${
