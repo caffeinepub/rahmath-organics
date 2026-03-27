@@ -38,6 +38,11 @@ export interface TrendingProduct {
   'productId' : string,
   'purchaseCount' : bigint,
 }
+export interface UserProfile {
+  'name' : string,
+  'email' : [] | [string],
+  'phone' : [] | [string],
+}
 export type UserRole = { 'admin' : null } |
   { 'user' : null } |
   { 'guest' : null };
@@ -62,9 +67,18 @@ export interface _CaffeineStorageRefillResult {
 export interface _SERVICE {
   '_caffeineStorageBlobIsLive' : ActorMethod<[Uint8Array], boolean>,
   '_caffeineStorageBlobsToDelete' : ActorMethod<[], Array<Uint8Array>>,
-  '_caffeineStorageConfirmBlobDeletion' : ActorMethod<[Array<Uint8Array>], undefined>,
-  '_caffeineStorageCreateCertificate' : ActorMethod<[string], _CaffeineStorageCreateCertificateResult>,
-  '_caffeineStorageRefillCashier' : ActorMethod<[[] | [_CaffeineStorageRefillInformation]], _CaffeineStorageRefillResult>,
+  '_caffeineStorageConfirmBlobDeletion' : ActorMethod<
+    [Array<Uint8Array>],
+    undefined
+  >,
+  '_caffeineStorageCreateCertificate' : ActorMethod<
+    [string],
+    _CaffeineStorageCreateCertificateResult
+  >,
+  '_caffeineStorageRefillCashier' : ActorMethod<
+    [[] | [_CaffeineStorageRefillInformation]],
+    _CaffeineStorageRefillResult
+  >,
   '_caffeineStorageUpdateGatewayPrincipals' : ActorMethod<[], undefined>,
   '_initializeAccessControlWithSecret' : ActorMethod<[string], undefined>,
   'addProduct' : ActorMethod<[Product], undefined>,
@@ -73,18 +87,21 @@ export interface _SERVICE {
   'checkOut' : ActorMethod<[Principal], undefined>,
   'deleteProduct' : ActorMethod<[string, string], undefined>,
   'getAllProducts' : ActorMethod<[], Array<Product>>,
+  'getCallerUserProfile' : ActorMethod<[], [] | [UserProfile]>,
   'getCallerUserRole' : ActorMethod<[], UserRole>,
   'getOrder' : ActorMethod<[string], [] | [Order]>,
   'getProduct' : ActorMethod<[string], [] | [Product]>,
   'getProductsByVendorId' : ActorMethod<[string], Array<Product>>,
   'getProductsFromAdmin' : ActorMethod<[], Array<Product>>,
   'getTrendingProducts' : ActorMethod<[], Array<TrendingProduct>>,
+  'getUserProfile' : ActorMethod<[Principal], [] | [UserProfile]>,
   'getVendor' : ActorMethod<[string], [] | [Vendor]>,
   'isCallerAdmin' : ActorMethod<[], boolean>,
   'kvDelete' : ActorMethod<[string], undefined>,
   'kvGet' : ActorMethod<[string], [] | [string]>,
   'kvGetAll' : ActorMethod<[], Array<[string, string]>>,
   'kvSet' : ActorMethod<[string, string], undefined>,
+  'saveCallerUserProfile' : ActorMethod<[UserProfile], undefined>,
 }
 export declare const idlService: IDL.ServiceClass;
 export declare const idlInitArgs: IDL.Type[];

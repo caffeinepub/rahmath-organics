@@ -84,14 +84,14 @@ export function useDeleteProduct() {
 }
 
 export function useKvGetAll() {
-  const { actor, isFetching } = useActor();
+  const { actor } = useActor();
   return useQuery<Array<[string, string]>>({
     queryKey: ["kv-store"],
     queryFn: async () => {
       if (!actor) return [];
       return actor.kvGetAll();
     },
-    enabled: !!actor && !isFetching,
+    enabled: !!actor,
   });
 }
 
@@ -104,7 +104,7 @@ export function useKvSet() {
       return actor.kvSet(key, value);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["kv-store"] });
+      queryClient.refetchQueries({ queryKey: ["kv-store"] });
     },
   });
 }
@@ -118,7 +118,7 @@ export function useKvDelete() {
       return actor.kvDelete(key);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["kv-store"] });
+      queryClient.refetchQueries({ queryKey: ["kv-store"] });
     },
   });
 }

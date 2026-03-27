@@ -93,10 +93,42 @@ const EMPTY_FORM: FormState = {
   category: "",
 };
 
-function readFileAsBase64(file: File): Promise<string> {
+function compressAndResizeImage(
+  file: File,
+  maxSize = 200,
+  quality = 0.5,
+): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        let { width, height } = img;
+        if (width > height) {
+          if (width > maxSize) {
+            height = Math.round((height * maxSize) / width);
+            width = maxSize;
+          }
+        } else {
+          if (height > maxSize) {
+            width = Math.round((width * maxSize) / height);
+            height = maxSize;
+          }
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          reject(new Error("Canvas not supported"));
+          return;
+        }
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL("image/jpeg", quality));
+      };
+      img.onerror = reject;
+      img.src = e.target?.result as string;
+    };
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
@@ -271,12 +303,7 @@ export function AdminPage() {
 
       let finalImage = imagePreview;
       if (imageFile) {
-        if (imageFile.size > 200 * 1024) {
-          toast.warning(
-            "Image is over 200KB — this may be slow to save. Consider using a smaller image.",
-          );
-        }
-        finalImage = await readFileAsBase64(imageFile);
+        finalImage = await compressAndResizeImage(imageFile);
       }
       if (!finalImage) {
         finalImage = "/assets/generated/hero-organic-new.dim_1400x500.jpg";
@@ -297,7 +324,7 @@ export function AdminPage() {
             `override:${editingId}`,
             JSON.stringify(overrideData),
           );
-          await queryClient.invalidateQueries({ queryKey: ["kv-store"] });
+          await queryClient.refetchQueries({ queryKey: ["kv-store"] });
         } else {
           const existing = localProducts.find((p) => p.id === editingId);
           if (existing) {
@@ -311,7 +338,7 @@ export function AdminPage() {
               category: form.category || existing.category,
             };
             await actor.kvSet(`p:${editingId}`, JSON.stringify(updated));
-            await queryClient.invalidateQueries({ queryKey: ["kv-store"] });
+            await queryClient.refetchQueries({ queryKey: ["kv-store"] });
           }
         }
         toast.success("Product updated!");
@@ -330,12 +357,13 @@ export function AdminPage() {
           category: form.category || "Organic",
         };
         await actor.kvSet(`p:${newId}`, JSON.stringify(lp));
-        await queryClient.invalidateQueries({ queryKey: ["kv-store"] });
+        await queryClient.refetchQueries({ queryKey: ["kv-store"] });
         toast.success("Product added!");
       }
       closeDialog();
     } catch (err) {
-      toast.error("Failed to save product. Please try again.");
+      const errMsg = err instanceof Error ? err.message : String(err);
+      toast.error(`Failed to save product: ${errMsg.slice(0, 80)}`);
       console.error(err);
     } finally {
       setSaving(false);
@@ -351,10 +379,10 @@ export function AdminPage() {
       if (productId.startsWith("sp-")) {
         const updated = [...deletedSampleIds, productId];
         await actor.kvSet("deleted-samples", JSON.stringify(updated));
-        await queryClient.invalidateQueries({ queryKey: ["kv-store"] });
+        await queryClient.refetchQueries({ queryKey: ["kv-store"] });
       } else {
         await actor.kvDelete(`p:${productId}`);
-        await queryClient.invalidateQueries({ queryKey: ["kv-store"] });
+        await queryClient.refetchQueries({ queryKey: ["kv-store"] });
       }
       toast.success("Product deleted");
     } catch (err) {
@@ -636,7 +664,7 @@ export function AdminPage() {
                     <div>
                       <Label>Product Image</Label>
                       <p className="text-xs text-muted-foreground mt-0.5 mb-1">
-                        ⚠️ Keep images under 200KB for best performance
+                        Images are automatically compressed for fast saving
                       </p>
                       <label
                         htmlFor="product-image-upload"
@@ -677,7 +705,7 @@ export function AdminPage() {
                             <span className="text-sm">
                               Click to upload image
                             </span>
-                            <span className="text-xs">JPG, PNG up to 5MB</span>
+                            <span className="text-xs">JPG, PNG — any size</span>
                           </div>
                         )}
                       </label>

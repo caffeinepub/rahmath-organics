@@ -17,6 +17,40 @@ actor {
   let accessControlState = AccessControl.initState();
   include MixinAuthorization(accessControlState);
 
+  // === STABLE STORAGE for kvStore (survives upgrades/redeployments) ===
+  stable var stableKv : [(Text, Text)] = [];
+  let kvStore = Map.empty<Text, Text>();
+
+  system func preupgrade() {
+    stableKv := kvStore.toArray();
+  };
+
+  system func postupgrade() {
+    for ((k, v) in stableKv.vals()) {
+      kvStore.add(k, v);
+    };
+    stableKv := [];
+  };
+
+  // No authorization required - any caller can read/write products
+  public shared func kvSet(key : Text, value : Text) : async () {
+    kvStore.add(key, value);
+  };
+
+  public shared func kvDelete(key : Text) : async () {
+    kvStore.remove(key);
+  };
+
+  public query func kvGet(key : Text) : async ?Text {
+    kvStore.get(key);
+  };
+
+  public query func kvGetAll() : async [(Text, Text)] {
+    kvStore.toArray();
+  };
+
+  // === Legacy types (kept for compatibility) ===
+
   type Vendor = {
     id : Text;
     company : Text;
@@ -55,40 +89,11 @@ actor {
     purchaseCount : Nat;
   };
 
-  // Maintains productId and purchase counts
   let trendingProducts = Map.empty<Text, Nat>();
-
   let products = Map.empty<Text, Product>();
   let vendors = Map.empty<Text, Vendor>();
   let orders = Map.empty<Text, Order>();
   let carts = Map.empty<Principal, Cart>();
-
-  // === Simple key-value store for product data (stored as JSON text) ===
-  // Keys for products: "p:{id}" -> product JSON
-  // Keys for config: "cfg:{key}" -> JSON value
-  let kvStore = Map.empty<Text, Text>();
-
-  public shared func kvSet(key : Text, value : Text) : async () {
-    kvStore.add(key, value);
-  };
-
-  public shared func kvDelete(key : Text) : async () {
-    kvStore.remove(key);
-  };
-
-  public query func kvGet(key : Text) : async ?Text {
-    kvStore.get(key);
-  };
-
-  public query func kvGetAll() : async [(Text, Text)] {
-    kvStore.toArray();
-  };
-
-  // === Legacy product functions (kept for compatibility) ===
-
-  func addTrendingProduct(productId : Text, purchaseCount : Nat) {
-    trendingProducts.add(productId, purchaseCount);
-  };
 
   func incrementTrendingProduct(productId : Text, incrementAmount : Nat) {
     let newCount = switch (trendingProducts.get(productId)) {
@@ -98,23 +103,16 @@ actor {
     trendingProducts.add(productId, newCount);
   };
 
-  func clearTrendingProducts() {
-    trendingProducts.clear();
-  };
-
   module TrendingProduct {
-    public func compare(trendingProduct1 : TrendingProduct, trendingProduct2 : TrendingProduct) : Order.Order {
-      Nat.compare(trendingProduct1.purchaseCount, trendingProduct2.purchaseCount);
+    public func compare(t1 : TrendingProduct, t2 : TrendingProduct) : Order.Order {
+      Nat.compare(t1.purchaseCount, t2.purchaseCount);
     };
   };
 
-  public query ({ caller }) func getTrendingProducts() : async [TrendingProduct] {
+  public query func getTrendingProducts() : async [TrendingProduct] {
     trendingProducts.toArray().map(
       func((productId, purchaseCount)) {
-        {
-          productId;
-          purchaseCount;
-        };
+        { productId; purchaseCount };
       }
     ).sort().reverse();
   };
@@ -127,10 +125,8 @@ actor {
       case (null) { Runtime.trap("Cart does not exist") };
       case (?cart) { cart };
     };
-
     let orderId = cartId.toText();
     let itemId = cart.items[0].0;
-
     let order = {
       id = orderId;
       customerId = caller;
@@ -140,31 +136,18 @@ actor {
       orderTime = 0;
       paid = true;
     };
-
     orders.add(orderId, order);
     carts.remove(cartId);
-
     for (i in cart.items.keys()) {
-      let currentItemId = cart.items[i].0;
-      incrementTrendingProduct(currentItemId, cart.items[i].1);
+      incrementTrendingProduct(cart.items[i].0, cart.items[i].1);
     };
   };
 
-  func verifyOwnership(productId : Text, vendorId : Text) : () {
-    let product = switch (products.get(productId)) {
-      case (null) { Runtime.trap("Product does not exist") };
-      case (?product) { product };
-    };
-    if (product.vendorId != vendorId) {
-      Runtime.trap("You cannot modify someone else's product");
-    };
-  };
-
-  public shared ({ caller }) func getProduct(productId : Text) : async (?Product) {
+  public query func getProduct(productId : Text) : async (?Product) {
     products.get(productId);
   };
 
-  public shared ({ caller }) func getVendor(vendorId : Text) : async (?Vendor) {
+  public query func getVendor(vendorId : Text) : async (?Vendor) {
     vendors.get(vendorId);
   };
 
@@ -179,17 +162,11 @@ actor {
     products.remove(productId);
   };
 
-  func updateProductByVendorId(index : Nat, vendorId : Text, product : Product) : ?Product {
-    if (product.vendorId == vendorId) {
-      ?product;
-    } else { null };
-  };
-
-  public query ({ caller }) func getProductsByVendorId(vendorId : Text) : async [Product] {
+  public query func getProductsByVendorId(vendorId : Text) : async [Product] {
     products.values().toArray().filter(func(product) { product.vendorId == vendorId });
   };
 
-  public query ({ caller }) func getAllProducts() : async [Product] {
+  public query func getAllProducts() : async [Product] {
     products.values().toArray();
   };
 
@@ -197,7 +174,7 @@ actor {
     products.values().toArray();
   };
 
-  public shared ({ caller }) func getOrder(orderId : Text) : async (?Order) {
+  public query func getOrder(orderId : Text) : async (?Order) {
     orders.get(orderId);
   };
 

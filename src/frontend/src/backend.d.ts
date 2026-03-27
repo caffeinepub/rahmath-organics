@@ -14,6 +14,15 @@ export class ExternalBlob {
     static fromBytes(blob: Uint8Array<ArrayBuffer>): ExternalBlob;
     withUploadProgress(onProgress: (percentage: number) => void): ExternalBlob;
 }
+export interface Product {
+    id: string;
+    name: string;
+    description: string;
+    stock: bigint;
+    vendorId: string;
+    image: ExternalBlob;
+    price: bigint;
+}
 export interface ProductInput {
     name: string;
     description: string;
@@ -39,14 +48,10 @@ export interface Order {
     customerId: Principal;
     totalPrice: bigint;
 }
-export interface Product {
-    id: string;
+export interface UserProfile {
     name: string;
-    description: string;
-    stock: bigint;
-    vendorId: string;
-    image: ExternalBlob;
-    price: bigint;
+    email?: string;
+    phone?: string;
 }
 export enum UserRole {
     admin = "admin",
@@ -60,16 +65,19 @@ export interface backendInterface {
     checkOut(cartId: Principal): Promise<void>;
     deleteProduct(productId: string, vendorId: string): Promise<void>;
     getAllProducts(): Promise<Array<Product>>;
+    getCallerUserProfile(): Promise<UserProfile | null>;
     getCallerUserRole(): Promise<UserRole>;
     getOrder(orderId: string): Promise<Order | null>;
     getProduct(productId: string): Promise<Product | null>;
     getProductsByVendorId(vendorId: string): Promise<Array<Product>>;
     getProductsFromAdmin(): Promise<Array<Product>>;
     getTrendingProducts(): Promise<Array<TrendingProduct>>;
+    getUserProfile(user: Principal): Promise<UserProfile | null>;
     getVendor(vendorId: string): Promise<Vendor | null>;
     isCallerAdmin(): Promise<boolean>;
-    kvSet(key: string, value: string): Promise<void>;
     kvDelete(key: string): Promise<void>;
     kvGet(key: string): Promise<string | null>;
     kvGetAll(): Promise<Array<[string, string]>>;
+    kvSet(key: string, value: string): Promise<void>;
+    saveCallerUserProfile(profile: UserProfile): Promise<void>;
 }

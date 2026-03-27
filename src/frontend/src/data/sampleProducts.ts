@@ -62,7 +62,7 @@ export const SAMPLE_PRODUCTS: SampleProduct[] = [
     reviews: 87,
     image: "/assets/generated/product-cashews.dim_400x400.jpg",
     stock: 40,
-    category: "Dry Fruits",
+    category: "Packs",
   },
   {
     id: "sp-5",
@@ -75,7 +75,7 @@ export const SAMPLE_PRODUCTS: SampleProduct[] = [
     reviews: 156,
     image: "/assets/generated/product-green-tea.dim_400x400.jpg",
     stock: 60,
-    category: "Teas",
+    category: "Sweeteners",
   },
   {
     id: "sp-6",
@@ -88,6 +88,6 @@ export const SAMPLE_PRODUCTS: SampleProduct[] = [
     reviews: 72,
     image: "/assets/generated/product-moringa.dim_400x400.jpg",
     stock: 80,
-    category: "Superfoods",
+    category: "Spices",
   },
 ];
