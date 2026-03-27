@@ -3,7 +3,10 @@ import { Button } from "@/components/ui/button";
 import { useSearch } from "@/contexts/SearchContext";
 import { SAMPLE_PRODUCTS, type SampleProduct } from "@/data/sampleProducts";
 import { useKvGetAll } from "@/hooks/useQueries";
-import { useNavigate } from "@tanstack/react-router";
+import {
+  useNavigate,
+  useSearch as useRouterSearch,
+} from "@tanstack/react-router";
 import { ChevronLeft, ChevronRight, Filter, SearchX } from "lucide-react";
 import { motion } from "motion/react";
 import { useEffect, useState } from "react";
@@ -54,11 +57,17 @@ const FEATURES = [
 ];
 
 export function HomePage() {
-  const [isWholesale, setIsWholesale] = useState(false);
+  const routerSearch = useRouterSearch({ strict: false }) as { mode?: string };
+  const mode = routerSearch?.mode;
+  const [isWholesale, setIsWholesale] = useState(mode === "wholesale");
   const [activeCategory, setActiveCategory] = useState("All");
   const [currentSlide, setCurrentSlide] = useState(0);
   const navigate = useNavigate();
   const { searchQuery, setSearchQuery } = useSearch();
+
+  useEffect(() => {
+    setIsWholesale(mode === "wholesale");
+  }, [mode]);
 
   const { data: kvData } = useKvGetAll();
 
