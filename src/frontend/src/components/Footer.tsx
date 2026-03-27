@@ -103,7 +103,7 @@ export function Footer() {
       </div>
       <div className="border-t border-white/10 py-4">
         <div className="container mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-sidebar-foreground/50">
-          <span>© {year} RAHMATH ORGANICS. All rights reserved.</span>
+          <span>© {year} RAHAMATH ORGANICS. All rights reserved.</span>
           <span>
             Built with ❤️ using{" "}
             <a

@@ -84,7 +84,7 @@ export function ConfirmationPage() {
           Order Placed Successfully!
         </h1>
         <p className="text-muted-foreground mb-8">
-          Thank you for shopping with RAHMATH ORGANICS
+          Thank you for shopping with RAHAMATH ORGANICS
         </p>
 
         <div className="bg-card border border-border rounded-xl p-6 text-left space-y-4 mb-6">

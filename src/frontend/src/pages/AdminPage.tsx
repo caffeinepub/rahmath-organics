@@ -409,7 +409,7 @@ export function AdminPage() {
             </div>
             <h1 className="text-xl font-bold text-foreground">Admin Login</h1>
             <p className="text-sm text-muted-foreground mt-1">
-              RAHMATH ORGANICS
+              RAHAMATH ORGANICS
             </p>
           </div>
 
@@ -468,7 +468,7 @@ export function AdminPage() {
       {/* Sidebar */}
       <aside className="w-56 bg-sidebar text-sidebar-foreground flex-shrink-0 flex flex-col">
         <div className="px-5 py-6 border-b border-sidebar-border">
-          <p className="font-bold text-sm text-white">RAHMATH ORGANICS</p>
+          <p className="font-bold text-sm text-white">RAHAMATH ORGANICS</p>
           <p className="text-xs text-sidebar-foreground/60 mt-0.5">
             Admin Dashboard
           </p>
